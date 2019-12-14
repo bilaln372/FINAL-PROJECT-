@@ -1,0 +1,210 @@
+---
+title: "STAT-184 Final Project"
+author: "Muhammad Bilal Yaseen"
+date: "Due Date: 12/16/19 @ 11:59 PM"
+output: html_notebook 
+---
+
+
+### Front Matter 
+
+```{r include=FALSE} 
+# did include=FALSE to pretiffy the output 
+# clean up workspace environment
+rm(list = ls()) 
+# load packages
+library(tidyverse) 
+library(tidyr)
+library(mosaicData)
+library(DataComputing) 
+library(rvest) 
+library(mosaic)
+library(dplyr)
+library(lubridate) 
+library(readr) 
+```
+
+#### Research Question 
+I have done statistical analysis of 19th century plane crashes. The research perspective is focused on determining specific facts/trends whichh are as follow: which airline was the most safe and unsafe, which planes were more safer than the other, airlines that suffered the most and least financial loss, nature of the trend of fatalities. Data visualizations help understand all these things.
+
+#### Abstract
+The aim of this report is to analyse two datasets. Primary dataset is 'Airplane_crashes' which compromises of plane crash data of the whole 19th century and the secondary dataset is 'Fleet_data' which gives information on the airplane fleet involved in the crashes. I named it Airplane_crash_fleet. Both of these datasets help me reach specific conclusions about my research. 
+
+####  CRITERIA 1: Data Access 
+```{r}
+Airplane_crashes <- read_csv("~/Desktop/Airplane_crashes.csv") #uploading primary dataset
+head(Airplane_crashes) #inspection works fine 
+str(Airplane_crashes) #inspection works fine 
+```
+
+```{r}
+Airplane_crash_fleet <- read_csv("~/Desktop/Fleet_data.csv") #uploading secondary dataset 
+head(Airplane_crash_fleet) #inspection works fine
+str(Airplane_crash_fleet) #inspection works fine
+```
+
+####  CRITERIA 2: Data Wrangling 
+
+*Description of code chunk below:* Since primary dataset contains alot of non-civilian crashes as well (like military), I extracted civilian ones and named the data frame Civilian_plane_crashes. It is grouped in a specific way as the code shows. Datasets are huge, so I used view() to comprehensively inspect data modifications at every stage. 
+```{r}
+Civilian_plane_crashes <-  
+  Airplane_crashes %>%                               #inputting primary dataset for read
+  filter(Operator != "Military") %>%                 #filtering out military crashes
+  group_by(Operator, ACType, Fatalities, Date) %>%   #ACType means Air Craft Type 
+  summarise() %>%
+  view()                                             
+```
+
+*Description of code chunk below:* Fatalities is in chr data type so I converted the data type by using as.numeric. After that it was possible for me to run aggregation and find out the total fatalities per Operator for the civilian plane crashes. These fatalities are for the entire century so thats why numbers are huge. Note that despite of filtering out military plane crashes, some still appear in my dataset. But its not a problem because I filtered them out manually as I proceeded. This code helped me figure out the answer to my question: which airline was the most safe and unsafe. It can be seen most safe one was Trans Canada Air Lines with just 212 fatalities over the whole century and the least safe one was Aeroflot with 8858 fatalities over the whole century. 
+```{r}
+Civilian_plane_crashes$Fatalities <- as.numeric(Civilian_plane_crashes$Fatalities) #conversion to appropriate data type 
+
+Civilian_plane_crashes %>%
+  group_by(Operator) %>%                            #grouping by Operator (i.e. Airline)
+  summarise(totalfatalities = sum(Fatalities)) %>%  #summing total fatalities 
+  filter(rank(desc(totalfatalities)) <= 100) %>%    #top 100 Operators ranked according to Fatalities  
+  arrange(desc(totalfatalities))                    #arranging from highest to least 
+```
+
+*Description of code chunk below:* Here I am working with the secondary dataset. For the columns 'UnitCost_mn' and 'TotalCost_mn', there is dollar sign along with numbers like $90. Data must be in same format so I used regex (gsub) to clean the columns from dollar sign. Also the reason I needed to do this was because I have to sum TotalCost_mn later on and it wont happen unless dollar sign is taken care of. 
+```{r}
+Airplane_crash_fleet %>%                                                           #cleaning data using regex expressions
+  mutate(UnitCost_mn = gsub(pattern = "[$]", replacement = "", UnitCost_mn),       #removing $ sign from UnitCost_mn and TotalCost_mn  
+         TotalCost_mn = gsub(pattern = "[$]", replacement = "", TotalCost_mn))     # mn is million so $90mn is $90 million
+```
+
+*Description of code chunk below:* Here I created data frame Plane_info which is to be used for a join later. This data frame shows the planes that were involved in the crash grouped with their specific operators and costs. 
+```{r}
+Plane_info <-
+  Airplane_crash_fleet %>% 
+  mutate(UnitCost_mn = gsub(pattern = "[$]", replacement = "", UnitCost_mn)) %>%          
+  group_by(Operator, ACType, UnitCost_mn) %>%                                     
+  summarise() %>%                             
+  view()                                      
+```
+
+*Description of code chunk below:* Here I created a data frame called Cabai (in short for Crash Analysis By Airplane Information). It gets formed by a join between two data frames (Civilian_plane_crashes & Plane_info). I did this join so that its easy to see which operator carried how many fatalities and what tyoe of plane was involved. This code helped me figure out the answer to my question: which plane was the most safe and unsafe. It can be seen that safest is Boeing because despite of multiple crashes, it had 0 fatalities for Operators like British Airways, Southwest Airlines etc. The least safe were Douglas, Tupolev, Antonov because their fatalities surpassed Boeing's by alot. This makes sense because Tupolev and Antonov are both Russian manufactured planes operated by Aeroflot which is Russian airline. So if Aeroflot was the least safe airline, it explains planes like Tupolev and Antonov were the reason behind it because they had so many fatalities. Note that fatalities data type was changed so that its possible to arrange it in descending order.  
+```{r}
+Civilian_plane_crashes$Fatalities <- as.numeric(Civilian_plane_crashes$Fatalities)
+
+Cabai <-    #Crash analysis by airplane information (in short Cabai)                                                                    
+  merge.data.frame(Civilian_plane_crashes, Plane_info, by = c('Operator')) %>%   #joining data frame by key = Operator 
+  group_by(Operator, Fatalities, ACType.x, Date) %>%                             #grouping in a specific way
+  summarise() %>%
+  arrange(desc(Fatalities)) %>%                                                  #fatalities in descending order
+  view()
+```
+
+*Description of code chunk below:* Here I created a data frame called Operators_totalloss which shows the total loss incurred by different operators in the entire century due to plane crashes. UniCost_mn was changed to appropriate data type so that it could be aggregated. This code helped me figure out answer to my question: which airline operator had the most financial loss and the least financial loss over the century. It can be seen that Air France suffered the most loss with USD 3071 million and Aviance Honduras suffered the least loss with just USD 22 million. Note here I am able to aggregate UnitCost_mn because I changed its data type and also in the previous codes I used regex to ger rid of the dollar sign. 
+```{r}
+Plane_info$UnitCost_mn <- as.numeric(Plane_info$UnitCost_mn)
+
+Operators_totalloss <-                                          #Operator or Airline total loss (regrading airplanes) for 19th century 
+  Plane_info %>%
+  group_by(Operator) %>%
+  summarise(totalloss_USDmillions = sum(UnitCost_mn)) %>%
+  arrange(desc(totalloss_USDmillions)) %>%
+  view() 
+```
+
+####  CRITERIA 3: Data Visualization 
+
+##### NOTE: 
+While doing visualizations, for most of the parts I had to restrict the amount of data that gets plotted. This is because my datasets are so huge that its not possible for me to plot the datatsets in entirety. I did try plotting entire datasets but R studio would either crash in between, take too long to load or give me a graph thats too messy to make sense of. So I worked with visualizations that made the mose sense.   
+
+*Description of code chunk below:* Here I am making a comparison of top seven airlines that faced the most financial losses throughout the century. Air France exceeds every other airline. Data frame Operators_totalloss was used here.   
+```{r}
+G1 <- 
+  head(Operators_totalloss, n=7)
+
+G1 %>% 
+  ggplot(aes(x = Operator, y = totalloss_USDmillions, 
+             key = Operator, color = Operator)) +
+  geom_point() +
+  ylim(0,3300)
+```
+
+*Description of code chunk below:* Here I am making a comparison between airlines that counted in top eight for highest number of fatalities. Note that G2 data frame contains two military crashes (row 2 and row 6) which I didn't wanted to include in my analysis. So the best way I could ignore them was manually selecting which operators I wanted to show along with their corresponding fatalities. All this is shown in code for G3. Aeroflot exceeds every other airline with the number of fatalities.  
+```{r}
+Civilian_plane_crashes$Fatalities <- as.numeric(Civilian_plane_crashes$Fatalities) #conversion to appropriate data type 
+
+G2 <-
+Civilian_plane_crashes %>%
+  group_by(Operator) %>%                            
+  summarise(totalfatalities = sum(Fatalities)) %>%  
+  filter(rank(desc(totalfatalities)) <= 100) %>%    
+  arrange(desc(totalfatalities))
+ 
+G3 <-
+  head(G2, n=10)
+G3
+
+G3 <- data.frame(Operator = c("Aeroflot", "Air France", "American Airlines",    
+                              "Pan American World Airways", "United Air Lines", 
+                              "AVIANCA", "Turkish Airlines (THY)", 
+                              "Indian Airlines"), 
+                 totalfatalities = c(8858, 1757, 1422, 1303, 1019, 941, 890, 860))
+ggplot(G3, aes(x=Operator, y = totalfatalities, key = totalfatalities, fill = Operator)) + geom_bar(stat = "identity") 
+```
+
+*Description of code chunk below:* Here I am trying to show briefly with year gaps, an overall trend of fatalities throughout the 19 century. Its brief because it dosent include all the dates of the crashes. As you see from 1905 to 1998, although there were crashes but fatalities remained low. But can we infer from this that overall trend of fatalities was actually low? To answer this look at the next code chunk ahead.  
+```{r}
+G4 <- 
+  Civilian_plane_crashes %>%
+  mutate(as.Date(Date, "%m/%d/%Y")) %>%  #helps read date as date so to plot it on graph
+  arrange(desc(Date))                    #arranging date in ascending order 
+G4
+
+G5 <-
+  head(G4, n=14)
+G3
+
+G5 %>% 
+  ggplot(aes(x = Date, y = Fatalities, key = Fatalities)) +
+  ylim(0,600) +
+  geom_point()
+```
+
+*Description of code chunk below:* Here I am showing in detail, the trend of fatalities that happened throughout the century considering the crash data in entirety unlike the previous code chunk. As you can see alot of density (darker region) lies below the 200th mark on y-axis. So considering this, yes it is determined that overall trend of fatalities was actually low. Since x-axis had to accomodate thousands of dates, the dates got overcrowded and overlapped. However the aim here is to show the trend of fatalities over the years which the graph shows.This brings me to my question: whats the nature of the trend of fatalities. As visualizations have showed, the trend keeps going up and down. You dont see a definite linear trend. Thus I would say trend is non-linear and keeps going up and down. Note the dates have been arranged in descending order on the x-axis. 
+```{r}
+G4 <- 
+  Civilian_plane_crashes %>%
+  mutate(as.Date(Date, "%m/%d/%Y")) %>%   #helps read date as date so to plot it on graph
+  arrange(desc(Date))                     #arranging date in descending order
+G4
+
+G4 %>% 
+  ggplot(aes(x = Date, y = Fatalities, key = Fatalities)) +
+  geom_point(alpha = 0.02, position = "Jitter") +
+  xlab("Plane Crash Dates for the whole 19th century") + 
+  ylab("Fatalities") + 
+  geom_col()
+  
+```
+
+*Description of code chunk below:* In this code, I mapped out civilian plane fatalities throughout the 19th century from the perspctive of a world map so that distribution of fatalities can be seen according to different parts of the world where crashes occured. The distribution in North and South America and Russia seems to be alike. However the pacific region and some minor islands show more fatalities than the other regions.    
+```{r}
+Civilian_plane_crashes <-
+  Airplane_crashes %>%
+  filter(Operator != "Military") %>%
+  group_by(Operator, ACType, Fatalities, Date, Location) %>%
+  summarise()
+
+Civilian_plane_crashes$Fatalities <- as.numeric(Civilian_plane_crashes$Fatalities)
+
+Civilian_plane_crashes1 <-
+  Civilian_plane_crashes %>%
+  group_by(Operator, Location) %>%                            
+  summarise(totalfatalities = sum(Fatalities)) %>%   
+  filter(rank(desc(totalfatalities)) <= 100) %>%      
+  arrange(desc(totalfatalities))
+
+G6 <-
+  Civilian_plane_crashes1 %>%
+  select(Location, totalfatalities)
+  
+WorldMap(G6, key = Location, fill = totalfatalities) 
+```
+
+The project ends here. 
+
